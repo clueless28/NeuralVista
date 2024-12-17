@@ -1,0 +1,8 @@
+torch
+torchvision
+torchaudio
+numpy
+pillow
+opencv-python
+git+https://github.com/jacobgil/pytorch-grad-cam.git
+gradio
