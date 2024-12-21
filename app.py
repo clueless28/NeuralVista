@@ -46,11 +46,11 @@ def process_image(sample_choice, uploaded_image, yolo_versions=["yolov5"]):
             result_images.append((Image.fromarray(image), f"{yolo_version} not yet implemented."))
     return result_images
 
-with gr.Blocks() as interface:
+with gr.Blocks(css=".orchid-green-bg { background-color: #2f4f4f !important; padding: 20px; }") as interface:
     gr.Markdown("# XAI: Visualize Object Detection of Your Models")
     gr.Markdown("Select a sample image to visualize object detection.")
     default_sample = "Sample 1"
-    with gr.Row():
+    with gr.Row(elem_classes="orchid-green-bg"):
         # Left side: Sample selection and upload image
         with gr.Column():
             sample_selection = gr.Radio(
