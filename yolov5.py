@@ -7,7 +7,6 @@ from pytorch_grad_cam import EigenCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image, scale_cam_image
 import gradio as gr
 
-# Global Color Palette
 COLORS = np.random.uniform(0, 255, size=(80, 3))
 
 
