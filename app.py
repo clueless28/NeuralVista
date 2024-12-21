@@ -63,7 +63,7 @@ with gr.Blocks() as interface:
             gr.Markdown("**Or upload your own image:**")
             upload_image = gr.Image(
                 label="Upload an Image",
-                type="filepath",  # Correct type for file path compatibility
+                type="pil",  # Correct type for file path compatibility
             )
         # Right side: Selected sample image display
         sample_display = gr.Image(
