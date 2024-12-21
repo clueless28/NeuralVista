@@ -51,27 +51,30 @@ with gr.Blocks() as interface:
     gr.Markdown("Select a sample image to visualize object detection.")
     default_sample = "Sample 1"
     with gr.Row():
-        sample_selection = gr.Radio(
-            choices=list(sample_images.keys()),
-            label="Select a Sample Image",
-            type="value",
-            value=default_sample,  # Set default selection
-        )
+        # Left side: Sample selection and upload image
+        with gr.Column():
+            sample_selection = gr.Radio(
+                choices=list(sample_images.keys()),
+                label="Select a Sample Image",
+                type="value",
+                value=default_sample,  # Set default selection
+            )
+            # Upload image below sample selection
+            gr.Markdown("**Or upload your own image:**")
+            upload_image = gr.Image(
+                label="Upload an Image",
+                type="filepath",  # Correct type for file path compatibility
+            )
+        # Right side: Selected sample image display
         sample_display = gr.Image(
             value=load_sample_image(default_sample),  
             label="Selected Sample Image",
         )
+    
     sample_selection.change(
         fn=load_sample_image,
         inputs=sample_selection,
         outputs=sample_display,
-    )
-
-    # Adding an upload placeholder
-    gr.Markdown("**Or upload your own image:**")
-    upload_image = gr.Image(
-        label="Upload an Image",
-        type="pil",  # Corrected type for file path compatibility
     )
 
     selected_models = gr.CheckboxGroup(
