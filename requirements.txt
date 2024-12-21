@@ -1,7 +1,7 @@
 torch
 torchvision
 torchaudio
-numpy
+numpy  
 pillow
 opencv-python
 grad-cam==1.4.8
