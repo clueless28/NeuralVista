@@ -1,30 +1,33 @@
+
 import numpy as np
 from PIL import Image
 import torch
+import cv2
 from typing import Callable, List, Tuple, Optional
 from sklearn.decomposition import NMF
 from pytorch_grad_cam.activations_and_gradients import ActivationsAndGradients
 from pytorch_grad_cam.utils.image import scale_cam_image, create_labels_legend, show_factorization_on_image
+import matplotlib.pyplot as plt
+from pytorch_grad_cam.utils.image import show_factorization_on_image
 
-def dff_l(activations: np.ndarray, n_components: int = 5):
-    """ Compute Deep Feature Factorization on a 2d Activations tensor.
-
-    :param activations: A numpy array of shape batch x channels x height x width
-    :param n_components: The number of components for the non negative matrix factorization
-    :returns: A tuple of the concepts (a numpy array with shape channels x components),
-              and the explanation heatmaps (a numpy arary with shape batch x height x width)
-
-    W is the feature matrix, representing extracted features or components.
-    H is the coefficient matrix, representing how these features combine to reconstruct each sample in the dataset.
-    """
-
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def dff_l(activations,  model,  n_components):
     batch_size, channels, h, w = activations.shape
+    target_layer_index = 4
+    output_from_target_layer = torch.from_numpy(activations).to(device)
+    print('activation_shape:', activations.shape)
+
+    with torch.no_grad():
+        for layer in model.model.model.model[target_layer_index + 2:]:
+            output_from_target_layer = layer(output_from_target_layer) 
+    print('output_shape:', output_from_target_layer.shape)
     reshaped_activations = activations.transpose((1, 0, 2, 3))
     reshaped_activations[np.isnan(reshaped_activations)] = 0
     reshaped_activations = reshaped_activations.reshape(
         reshaped_activations.shape[0], -1)
     offset = reshaped_activations.min(axis=-1)
     reshaped_activations = reshaped_activations - offset[:, None]
+    print('reshaped activations', activations.shape)
 
     model = NMF(n_components=n_components, init='random', random_state=0)
     W = model.fit_transform(reshaped_activations)
@@ -48,6 +51,7 @@ class DeepFeatureFactorization:
 
     def __call__(self,
                  input_tensor: torch.Tensor,
+                 model: torch.nn.Module,
                  n_components: int = 16):
         if isinstance(input_tensor, np.ndarray):
             input_tensor = torch.from_numpy(input_tensor)  # Convert NumPy array 
@@ -60,7 +64,7 @@ class DeepFeatureFactorization:
             activations = self.activations_and_grads.activations[0].cpu(
             ).numpy()
 
-        concepts, explanations = dff_l(activations, n_components=n_components)
+        concepts, explanations = dff_l(activations, model,  n_components=n_components)
 
         processed_explanations = []
 
@@ -88,8 +92,6 @@ class DeepFeatureFactorization:
                 f"An exception occurred in ActivationSummary with block: {exc_type}. Message: {exc_value}")
             return True
 
-
-
 def get_image_from_url(url, device):
     img = np.array(Image.open(url))  # Load image directly from URL
     img = cv2.resize(img, (640, 640))  # Resize image
@@ -97,28 +99,21 @@ def get_image_from_url(url, device):
     input_tensor = torch.from_numpy(rgb_img_float).permute(2, 0, 1).unsqueeze(0).to(device)  # Change shape to [1, C, H, W]
     return img, rgb_img_float, input_tensor
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 mean = [0.485, 0.456, 0.406]  # Mean for RGB channels
 std = [0.229, 0.224, 0.225]   # Standard deviation for RGB channels
 # Load YOLOv5 model and move it to the appropriate device
 img, rgb_img_float, input_tensor = get_image_from_url("/home/drovco/Bhumika/NeuralVista/data/xai/sample1.jpeg", device)
 model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True).to(device)
-dff = DeepFeatureFactorization(model=model, 
+dff= DeepFeatureFactorization(model=model, 
                                target_layer=model.model.model.model[-4], 
                                computation_on_concepts=None)
 n_components = 4
-concepts, batch_explanations = dff(input_tensor, n_components=n_components)
-import numpy as np
-import matplotlib.pyplot as plt
-from pytorch_grad_cam.utils.image import show_factorization_on_image
+concepts, batch_explanations = dff(input_tensor, model, n_components)
 
 def visualize_batch_explanations(rgb_img_float, batch_explanations, image_weight=0.7):
-    # Iterate over each explanation in the batch
     for i, explanation in enumerate(batch_explanations):
         # Create visualization for each explanation
         visualization = show_factorization_on_image(rgb_img_float, explanation, image_weight=image_weight)
-        
-        # Display the visualization using Matplotlib
         plt.figure()
         plt.imshow(visualization)  # Correctly pass the visualization data
         plt.title(f'Explanation {i + 1}')  # Set the title for each plot
@@ -126,5 +121,4 @@ def visualize_batch_explanations(rgb_img_float, batch_explanations, image_weight
         plt.show()  # Show the plot
     plt.savefig("test_w.png")
 
-# Assuming rgb_img_float and batch_explanations are defined as per your previous code
 visualize_batch_explanations(rgb_img_float, batch_explanations)
