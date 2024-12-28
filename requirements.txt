@@ -8,3 +8,4 @@ grad-cam==1.4.8
 gradio>=3.37.0
 ultralytics
 torchcam
+netron
