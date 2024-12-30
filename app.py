@@ -1,23 +1,20 @@
-import gradio as gr
 import netron
-import os
 import threading
-import time
+import gradio as gr
+import os
 from PIL import Image
 import cv2
 import numpy as np
-import torch
 from yolov5 import xai_yolov5
 from yolov8 import xai_yolov8s
+import time
+import tempfile
 
 # Sample images directory
 sample_images = {
     "Sample 1": os.path.join(os.getcwd(), "data/xai/sample1.jpeg"),
     "Sample 2": os.path.join(os.getcwd(), "data/xai/sample2.jpg"),
 }
-
-# Preloaded model file path (update this path as needed)
-preloaded_model_file = os.path.join(os.getcwd(), "weight_files/yolov5.onnx")  # Example path
 
 def load_sample_image(sample_name):
     """Load a sample image based on user selection."""
@@ -47,18 +44,20 @@ def process_image(sample_choice, uploaded_image, yolo_versions):
 
     return result_images
 
-def serve_netron(model_file):
-    """Start the Netron server in a separate thread."""
-    threading.Thread(target=netron.start, args=(model_file,), daemon=True).start()
-    time.sleep(1)  # Give some time for the server to start
-    return "http://localhost:8080"  # Default Netron URL
-def view_model():
-    """Handle model visualization using preloaded model file."""
-    if not os.path.exists(preloaded_model_file):
-        return "Model file not found."
-    
-    netron_url = serve_netron(preloaded_model_file)
-    return f'<iframe src="{netron_url}" width="100%" height="600px"></iframe>'
+def view_model(selected_models):
+    """Generate Netron visualization for the selected models."""
+    for model in selected_models:
+        if model == "yolov5":
+            iframe_html = f"""
+            <iframe 
+                src="https://netron.app/?url=https://huggingface.co/FFusion/FFusionXL-BASE/blob/main/vae_encoder/model.onnx" 
+                width="100%" 
+                height="800" 
+                frameborder="0">
+            </iframe>
+            """
+            return iframe_html
+    return "<p>Please select a valid model for Netron visualization.</p>"
 
 # Custom CSS for styling (optional)
 custom_css = """
@@ -72,7 +71,7 @@ custom_css = """
 """
 
 with gr.Blocks(css=custom_css) as interface:
-    gr.Markdown("# XAI: Visualize Object Detection of Your Models")
+    gr.Markdown("# NeuralVista: Visualize Object Detection of Your Models")
     
     default_sample = "Sample 1"
 
@@ -116,21 +115,23 @@ with gr.Blocks(css=custom_css) as interface:
 
         netron_display = gr.HTML(label="Netron Visualization")
 
+    # Update the sample image when the sample is changed
     sample_selection.change(
         fn=load_sample_image,
         inputs=sample_selection,
         outputs=sample_display,
     )
 
+    # Process image and display results, also trigger Netron visualization when run button is clicked
     run_button.click(
-        fn=process_image,
+        fn=lambda sample_choice, uploaded_image, yolo_versions: [
+            process_image(sample_choice, uploaded_image, yolo_versions),  # Process image
+            view_model(yolo_versions)  # Display model visualization
+        ],
         inputs=[sample_selection, upload_image, selected_models],
-        outputs=[result_gallery],
+        outputs=[result_gallery, netron_display],
     )
 
-    # Update Netron display when the interface loads
-    netron_display.value = view_model()  # Directly set the value
-
-# Launching Gradio app and handling Netron visualization separately.
+# Launching Gradio app
 if __name__ == "__main__":
     interface.launch(share=True)
