@@ -7,8 +7,6 @@ import cv2
 import numpy as np
 from yolov5 import xai_yolov5
 from yolov8 import xai_yolov8s
-import time
-import tempfile
 
 # Sample images directory
 sample_images = {
@@ -23,32 +21,35 @@ def load_sample_image(sample_name):
         return Image.open(image_path)
     return None
 
-def process_image(sample_choice, uploaded_image, yolo_versions):
+def process_image(sample_choice, uploaded_image, yolo_versions, target_lyr = -5, n_components = 8):
     """Process the image using selected YOLO models."""
+    # Load sample or uploaded image
     if uploaded_image is not None:
-        image = uploaded_image  # Use the uploaded image
+        image = uploaded_image
     else:
-        image = load_sample_image(sample_choice)  # Use selected sample image
+        image = load_sample_image(sample_choice)
 
+    # Preprocess image
     image = np.array(image)
     image = cv2.resize(image, (640, 640))
     result_images = []
 
+    # Apply selected models
     for yolo_version in yolo_versions:
         if yolo_version == "yolov5":
-            result_images.append(xai_yolov5(image)) 
+            result_images.append(xai_yolov5(image, target_lyr = -5, n_components = 8)) 
         elif yolo_version == "yolov8s":
             result_images.append(xai_yolov8s(image))
         else:
-            result_images.append((Image.fromarray(image), f"{yolo_version} not yet implemented."))
-
+            result_images.append((Image.fromarray(image), f"{yolo_version} not implemented."))
     return result_images
 
 def view_model(selected_models):
     """Generate Netron visualization for the selected models."""
+    netron_html = ""
     for model in selected_models:
         if model == "yolov5":
-            iframe_html = f"""
+            netron_html = f"""
             <iframe 
                 src="https://netron.app/?url=https://huggingface.co/FFusion/FFusionXL-BASE/blob/main/vae_encoder/model.onnx" 
                 width="100%" 
@@ -56,8 +57,7 @@ def view_model(selected_models):
                 frameborder="0">
             </iframe>
             """
-            return iframe_html
-    return "<p>Please select a valid model for Netron visualization.</p>"
+    return netron_html if netron_html else "<p>No valid models selected for visualization.</p>"
 
 # Custom CSS for styling (optional)
 custom_css = """
@@ -73,15 +73,15 @@ custom_css = """
 with gr.Blocks(css=custom_css) as interface:
     gr.Markdown("# NeuralVista: Visualize Object Detection of Your Models")
     
+    # Default sample
     default_sample = "Sample 1"
 
     with gr.Row():
-        # Left side: Sample selection and upload image
+        # Left side: Sample selection and image upload
         with gr.Column():
             sample_selection = gr.Radio(
                 choices=list(sample_images.keys()),
                 label="Select a Sample Image",
-                type="value",
                 value=default_sample,
             )
 
@@ -104,34 +104,67 @@ with gr.Blocks(css=custom_css) as interface:
                 label="Selected Sample Image",
             )
 
-    # Below the sample image, display results and architecture side by side
+    # Results and visualization
     with gr.Row():
         result_gallery = gr.Gallery(
             label="Results",
-            elem_id="gallery",
             rows=1,
             height=500,
         )
 
         netron_display = gr.HTML(label="Netron Visualization")
 
-    # Update the sample image when the sample is changed
+    # Update sample image
     sample_selection.change(
         fn=load_sample_image,
         inputs=sample_selection,
         outputs=sample_display,
     )
+    with gr.Row():
+        dff_gallery = gr.Gallery(
+            label="Deep Feature Factorization",
+            rows=1,
+            height=800,
+        )
 
-    # Process image and display results, also trigger Netron visualization when run button is clicked
+
+    # Multi-threaded processing
+    def run_both(sample_choice, uploaded_image, selected_models):
+        results = []
+        netron_html = ""
+
+        # Thread to process the image
+        def process_thread():
+            nonlocal results
+            target_lyr = -5 
+            n_components = 8
+            results = process_image(sample_choice, uploaded_image, selected_models, target_lyr = -5, n_components = 8)
+
+        # Thread to generate Netron visualization
+        def netron_thread():
+            nonlocal netron_html
+            netron_html = view_model(selected_models)
+
+        # Launch threads
+        t1 = threading.Thread(target=process_thread)
+        t2 = threading.Thread(target=netron_thread)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+        image1, text, image2 = results[0]
+        print('results', results)
+        print('image2', image2)
+        return [(image1, text)], netron_html, [image2]
+
+    # Run button click
+
     run_button.click(
-        fn=lambda sample_choice, uploaded_image, yolo_versions: [
-            process_image(sample_choice, uploaded_image, yolo_versions),  # Process image
-            view_model(yolo_versions)  # Display model visualization
-        ],
+        fn=run_both,
         inputs=[sample_selection, upload_image, selected_models],
-        outputs=[result_gallery, netron_display],
+        outputs=[result_gallery, netron_display, dff_gallery],
     )
 
-# Launching Gradio app
+# Launch Gradio interface
 if __name__ == "__main__":
     interface.launch(share=True)
