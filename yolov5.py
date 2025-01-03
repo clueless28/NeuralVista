@@ -1,7 +1,8 @@
+
 import torch
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image  
 import torchvision.transforms as transforms
 from pytorch_grad_cam import EigenCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image, scale_cam_image
@@ -88,11 +89,11 @@ def xai_yolov5(image,target_lyr = -5, n_components = 8):
     cam_image, renormalized_cam_image = generate_cam_image(model, target_layers, tensor, image, boxes)
 
     rgb_img_float, batch_explanations, result = dff_nmf(image, target_lyr = -5, n_components = 8)
-    result = np.hstack(result)
-    im = visualize_batch_explanations(rgb_img_float, batch_explanations)
+    #result = np.hstack(result)
+    im = visualize_batch_explanations(rgb_img_float, batch_explanations)  ##########to be displayed
     
     # Combine results
-    final_image = np.hstack((image, detections_img, renormalized_cam_image, im))
+    final_image = np.hstack((image, detections_img, renormalized_cam_image))
     caption = "Results using YOLOv5"
     return Image.fromarray(final_image), caption, result
 
@@ -132,7 +133,7 @@ class DeepFeatureFactorization:
                  model: torch.nn.Module,
                  n_components: int = 16):
         if isinstance(input_tensor, np.ndarray):
-            input_tensor = torch.from_numpy(input_tensor)  # Convert NumPy array 
+            input_tensor = torch.from_numpy(input_tensor) 
 
         batch_size, channels, h, w = input_tensor.size()
         _ = self.activations_and_grads(input_tensor)
@@ -210,8 +211,9 @@ def dff_nmf(image, target_lyr, n_components):
         scores = scores * objectness  # Adjust scores by objectness
         boxes = output1[..., :4]  # First 4 values are x1, y1, x2, y2
         boxes = boxes[confidence_mask]  # Filter boxes by confidence mask
-        fig, ax = plt.subplots(1, figsize=(10, 10))
-        ax.imshow(torch.tensor(batch_explanations[0][indx]).cpu().numpy(), cmap="RdYlGn")  # Display image
+        fig, ax = plt.subplots(1, figsize=(8, 8))
+        ax.axis("off")
+        ax.imshow(torch.tensor(batch_explanations[0][indx]).cpu().numpy(), cmap="plasma")  # Display image
         top_score_idx = scores.argmax(dim=0)  # Get the index of the max score
         top_score = scores[top_score_idx].item()
         top_class_id = class_ids[top_score_idx].item()
@@ -227,10 +229,24 @@ def dff_nmf(image, target_lyr, n_components):
         predicted_label = labels[top_class_id]  # Map ID to label
         ax.text(x1, y1, f"{predicted_label}: {top_score:.2f}",
             color='r', fontsize=12, verticalalignment='top')
-        plt.show()
-        plt.savefig("test_" + str(indx) + ".png" )
-        plt.clf()
-        results.append(Image.open(f"test_{indx}.png"))
+        plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
+
+        fig.canvas.draw()  # Draw the canvas to make sure the image is rendered
+        image_array = np.array(fig.canvas.renderer.buffer_rgba())  # Convert to numpy array
+        print("____________image_arrya", image_array.shape)
+        image_resized = cv2.resize(image_array, (640, 640))
+        rgba_channels = cv2.split(image_resized)
+        alpha_channel = rgba_channels[3] 
+        rgb_channels = np.stack(rgba_channels[:3], axis=-1)
+        #overlay_img = (alpha_channel[..., None] * image) + ((1 - alpha_channel[..., None]) * rgb_channels)
+        
+        #temp = image_array.reshape((rgb_img_float.shape[0],rgb_img_float.shape[1]) )
+        #visualization = show_factorization_on_image(rgb_img_float, image_array.resize((rgb_img_float.shape)) , image_weight=0.3)
+        visualization = show_factorization_on_image(rgb_img_float, np.transpose(rgb_channels, (2, 0, 1)), image_weight=0.3)
+        results.append(visualization)
+        plt.clf()  
+        #return image_array
+
 
     return rgb_img_float, batch_explanations, results
 
@@ -238,6 +254,7 @@ def dff_nmf(image, target_lyr, n_components):
 def visualize_batch_explanations(rgb_img_float, batch_explanations, image_weight=0.7):
     for i, explanation in enumerate(batch_explanations):
         # Create visualization for each explanation
+        print("visualization concepts",rgb_img_float.shape,explanation.shape  )
         visualization = show_factorization_on_image(rgb_img_float, explanation, image_weight=image_weight)
         plt.figure()
         plt.imshow(visualization)  # Correctly pass the visualization data
